@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart AI Plant Doctor</title>
+  <!-- 引入 MQTT.js 库 -->
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <style>
+    :root {
+      --bg-color: #e8f3e8;
+      --card-bg: #ffffff;
+      --primary-green: #4caf50;
+      --dark-green: #2e7d32;
+      --accent-yellow: #fff9c4;
+      --text-dark: #333333;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: var(--bg-color);
+      background-image: radial-gradient(#c8e6c9 1px, transparent 1px);
+      background-size: 20px 20px;
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh;
+    }
+
+    .dashboard-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      max-width: 1050px;
+      width: 100%;
+      justify-content: center;
+    }
+
+    /* 卡片通用样式 */
+    .card {
+      background-color: var(--card-bg);
+      border: 3px solid #a5d6a7;
+      border-radius: 20px;
+      padding: 20px;
+      box-shadow: 0 8px 16px rgba(0,0,0,0.08);
+      flex: 1;
+      min-width: 300px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+    }
+
+    .card-title {
+      font-size: 18px;
+      font-weight: bold;
+      color: var(--dark-green);
+      margin-bottom: 15px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* 📷 图片上传区域 */
+    .upload-area {
+      width: 100%;
+      height: 180px;
+      border: 2px dashed #81c784;
+      border-radius: 15px;
+      background-color: #f1f8e9;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      cursor: pointer;
+      overflow: hidden;
+      position: relative;
+      transition: all 0.2s ease;
+    }
+
+    .upload-area:hover {
+      background-color: #e8f5e9;
+      border-color: #4caf50;
+    }
+
+    .upload-area img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .upload-hint {
+      text-align: center;
+      color: #555;
+      font-size: 14px;
+    }
+
+    .upload-btn {
+      margin-top: 10px;
+      background-color: #81c784;
+      color: white;
+      border: none;
+      padding: 8px 18px;
+      font-weight: bold;
+      border-radius: 20px;
+      cursor: pointer;
+    }
+
+    /* 🤖 AI 诊断结果框 */
+    .ai-assistant {
+      background-color: #f1f8e9;
+      border-radius: 15px;
+      border: 2px dashed #81c784;
+      width: 100%;
+      padding: 15px;
+      box-sizing: border-box;
+      margin-top: 15px;
+      min-height: 100px;
+    }
+
+    .ai-assistant h4 {
+      margin: 0 0 8px 0;
+      color: var(--dark-green);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .ai-assistant p {
+      margin: 0;
+      font-size: 13.5px;
+      color: #444;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+
+    /* 💧 湿度进度条（圆形） */
+    .circle-progress-container {
+      position: relative;
+      width: 150px;
+      height: 150px;
+      margin: 10px 0;
+    }
+
+    .circle-progress-container svg {
+      width: 100%;
+      height: 100%;
+      transform: rotate(-90deg);
+    }
+
+    .circle-progress-container circle {
+      fill: none;
+      stroke-width: 12;
+      stroke-linecap: round;
+    }
+
+    .bg-circle { stroke: #e0e0e0; }
+
+    .progress-circle {
+      stroke: var(--primary-green);
+      stroke-dasharray: 440;
+      stroke-dashoffset: 440;
+      transition: stroke-dashoffset 0.8s ease, stroke 0.5s ease;
+    }
+
+    .percentage-text {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 26px;
+      font-weight: bold;
+      color: var(--dark-green);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .percentage-text span { font-size: 12px; color: #777; margin-top: 2px; }
+
+    /* 状态标签 */
+    .status-badge {
+      display: inline-block;
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: bold;
+      margin-top: 10px;
+    }
+
+    .status-good { background-color: #c8e6c9; color: #2e7d32; }
+    .status-dry { background-color: #ffecb3; color: #f57f17; }
+    .status-wet { background-color: #b3e5fc; color: #0277bd; }
+
+    /* 浇水控制按钮 */
+    .pump-btn {
+      margin-top: 15px;
+      background-color: #40c4ff;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      font-size: 15px;
+      font-weight: bold;
+      border-radius: 25px;
+      cursor: pointer;
+      box-shadow: 0 4px 10px rgba(64, 196, 255, 0.4);
+      transition: all 0.2s ease;
+      width: 100%;
+    }
+
+    .pump-btn:hover { background-color: #00b0ff; }
+    .pump-btn:disabled { background-color: #ccc; cursor: not-allowed; box-shadow: none; }
+
+    .connection-status {
+      position: absolute;
+      top: 10px;
+      right: 15px;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .dot { width: 8px; height: 8px; border-radius: 50%; background-color: #ccc; }
+    .dot.connected { background-color: #4caf50; }
+  </style>
+</head>
+<body>
+
+  <div class="dashboard-container">
+
+    <!-- 左卡片：拍照上传与 AI 诊所 -->
+    <div class="card">
+      <div class="card-title">📷 Plant Photo Diagnosis</div>
+
+      <div class="upload-area" onclick="document.getElementById('file-input').click()">
+        <img id="preview-img" style="display:none;" />
+        <div id="upload-placeholder" class="upload-hint">
+          <div style="font-size: 32px; margin-bottom: 5px;">📸</div>
+          <b>Click to upload / take photo</b>
+          <div style="font-size: 11px; color: #888; margin-top: 4px;">Supports JPG, PNG</div>
+        </div>
+      </div>
+      <input type="file" id="file-input" accept="image/*" style="display:none;" onchange="handleImageUpload(event)">
+
+      <!-- AI 诊断回复 -->
+      <div class="ai-assistant">
+        <h4>🤖 AI Doctor Advice</h4>
+        <p id="ai-diagnosis">Upload a plant photo above, and AI will analyze its species and health condition!</p>
+      </div>
+    </div>
+
+    <!-- 右卡片：实时土壤数据与远程浇水控制 -->
+    <div class="card">
+      <div class="connection-status">
+        <div id="status-dot" class="dot"></div>
+        <span id="status-text">Disconnected</span>
+      </div>
+
+      <div class="card-title">💧 Soil Moisture</div>
+
+      <!-- 圆形进度条 -->
+      <div class="circle-progress-container">
+        <svg viewBox="0 0 160 160">
+          <circle class="bg-circle" cx="80" cy="80" r="70"></circle>
+          <circle id="progress-bar" class="progress-circle" cx="80" cy="80" r="70"></circle>
+        </svg>
+        <div class="percentage-text">
+          <span id="moisture-percent">--%</span>
+          <span id="raw-adc">ADC: ----</span>
+        </div>
+      </div>
+
+      <div class="card-title" style="font-size: 14px; margin-bottom: 5px;">Moisture Level</div>
+      <div id="status-badge" class="status-badge status-good">Checking...</div>
+
+      <div style="width: 100%; margin-top: 15px; font-size: 13px; color: #666; line-height: 1.8;">
+        <div>🌱 <b>Status:</b> <span id="detail-status">Normal</span></div>
+        <div>☀️ <b>Light Sensor (ADC):</b> <span id="light-val">--</span></div>
+      </div>
+
+      <button id="pump-button" class="pump-btn" onclick="triggerPump()">
+        💧 Quick Water (3s)
+      </button>
+    </div>
+
+  </div>
+
+  <script>
+    // ⚠️ 记得在这里填入你在 Google AI Studio 申请的 API Key
+    const GEMINI_API_KEY = 'AQ.Ab8RN6KJ05CtRgKDFMXrlHn99nttwUYSlwiD1Nfym2e2CXCrDA';
+
+    // 传感器校准数据
+    const DRY_ADC = 2568;  // 0%
+    const WET_ADC = 1700;  // 100%
+
+    let currentMoisturePercent = "--";
+    let base64ImageData = null;
+
+    // 1. MQTT 连接设置
+    const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
+      clientId: 'Web_PlantDoctor_' + Math.random().toString(16).substr(2, 8),
+      clean: true,
+      keepalive: 60,
+      protocolVersion: 4
+    });
+
+    const progressBar = document.getElementById('progress-bar');
+    const percentText = document.getElementById('moisture-percent');
+    const rawAdcText = document.getElementById('raw-adc');
+    const statusBadge = document.getElementById('status-badge');
+    const detailStatus = document.getElementById('detail-status');
+    const lightValText = document.getElementById('light-val');
+    const statusDot = document.getElementById('status-dot');
+    const statusText = document.getElementById('status-text');
+    const CIRCUMFERENCE = 440;
+
+    client.on('connect', () => {
+      statusDot.classList.add('connected');
+      statusText.innerText = 'Connected';
+      statusText.style.color = '#4caf50';
+      client.subscribe('myplant/#');
+    });
+
+    client.on('offline', () => {
+      statusDot.classList.remove('connected');
+      statusText.innerText = 'Disconnected';
+      statusText.style.color = '#777';
+    });
+
+    client.on('message', (topic, message) => {
+      const payload = message.toString();
+      if (topic === 'myplant/soil/moisture') updateMoistureUI(parseInt(payload));
+      if (topic === 'myplant/light/data') lightValText.innerText = payload;
+    });
+
+    function updateMoistureUI(adc) {
+      let clampedAdc = Math.max(WET_ADC, Math.min(DRY_ADC, adc));
+      let percentage = Math.round(((DRY_ADC - clampedAdc) / (DRY_ADC - WET_ADC)) * 100);
+      currentMoisturePercent = percentage + '%';
+
+      percentText.innerText = currentMoisturePercent;
+      rawAdcText.innerText = 'ADC: ' + adc;
+
+      const offset = CIRCUMFERENCE - (percentage / 100) * CIRCUMFERENCE;
+      progressBar.style.strokeDashoffset = offset;
+
+      if (percentage < 30) {
+        statusBadge.innerText = '⚠️ Too Dry';
+        statusBadge.className = 'status-badge status-dry';
+        detailStatus.innerText = 'Needs Water';
+        progressBar.style.stroke = '#ff9800';
+      } else if (percentage > 85) {
+        statusBadge.innerText = '💧 Very Wet';
+        statusBadge.className = 'status-badge status-wet';
+        detailStatus.innerText = 'Moist';
+        progressBar.style.stroke = '#03a9f4';
+      } else {
+        statusBadge.innerText = '🌱 Good';
+        statusBadge.className = 'status-badge status-good';
+        detailStatus.innerText = 'Healthy';
+        progressBar.style.stroke = '#4caf50';
+      }
+    }
+
+    // 2. 处理图片上传
+    function handleImageUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        document.getElementById('preview-img').src = e.target.result;
+        document.getElementById('preview-img').style.display = 'block';
+        document.getElementById('upload-placeholder').style.display = 'none';
+
+        // 提取 Base64 图片编码（去掉前面的 data:image/png;base64, 前缀）
+        base64ImageData = e.target.result.split(',')[1];
+
+        // 自动触发 AI 诊断
+        analyzePlantWithAI();
+      };
+      reader.readAsDataURL(file);
+    }
+
+  // 3. 调用 Gemini AI 识图 API
+async function analyzePlantWithAI() {
+  const diagnosisBox = document.getElementById('ai-diagnosis');
+  diagnosisBox.innerText = "🔍 AI正在分析植物照片与土壤数据...";
+
+  if (!GEMINI_API_KEY || GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY') {
+    diagnosisBox.innerText = "⚠️ 请先在代码中配置有效的 Gemini API Key。";
+    return;
+  }
+
+  const prompt = `你是一位植物养护专家。请观察这张植物照片，并结合当前土壤湿度（${currentMoisturePercent}）：
+1. 识别植物种类。
+2. 评估叶片和整体健康状况（是否有枯黄、病虫害等问题）。
+3. 结合当前湿度（${currentMoisturePercent}），给出 2~3 条具体的养护建议。
+请用亲切简短的语言回答，控制在 120 字以内。`;
+
+  try {
+    // 使用 gemini-3.8-flash 标准 Endpoint
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${GEMINI_API_KEY}`;
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { text: prompt },
+            { 
+              inline_data: { 
+                mime_type: "image/jpeg", 
+                data: base64ImageData 
+              } 
+            }
+          ]
+        }]
+      })
+    });
+
+    const data = await response.json();
+    
+    if (data.candidates && data.candidates[0].content.parts[0].text) {
+      diagnosisBox.innerText = data.candidates[0].content.parts[0].text;
+    } else {
+      console.error("API 详细返回数据:", data);
+      if (data.error) {
+        diagnosisBox.innerText = `❌ API 报错: ${data.error.message || '未知错误'}`;
+      } else {
+        diagnosisBox.innerText = "❌ 分析失败，请检查图片或 API Key 设置。";
+      }
+    }
+  } catch (err) {
+    console.error(err);
+    diagnosisBox.innerText = "⚠️ 连接 AI 诊所失败，请检查网络连接。";
+  }
+}    // 4. 控制水泵（带有防重复点击锁）
+    function triggerPump() {
+      const btn = document.getElementById('pump-button');
+      client.publish('myplant/pump/control', 'PUMP');
+      
+      btn.disabled = true;
+      btn.innerText = '💧 Watering... (5s cooldown)';
+      
+      let countdown = 5;
+      const interval = setInterval(() => {
+        countdown--;
+        if (countdown > 0) {
+          btn.innerText = `💧 Watering... (${countdown}s cooldown)`;
+        } else {
+          clearInterval(interval);
+          btn.disabled = false;
+          btn.innerText = '💧 Quick Water (3s)';
+        }
+      }, 1000);
+    }
+  </script>
+</body>
+</html>
